@@ -18,20 +18,35 @@ from abc import abstractmethod
 
 
 class Signal:
+    """
+    Base Signal structure.
+
+    _fields is the data hold by the signal. It has the following structure:
+        key     - field name
+        value   - tuple (type, default_value, human_readable_description)
+    """
+
     _fields = {
         'src': (str, None, 'source/sender Null substance'),
         'dst': (str, None, 'destination/receiver Null substance')
     }
+
+    _description = 'base signalling class'
 
     class FieldsMismatchError(Exception):
         pass
 
     @classmethod
     def inspect_fields(cls):
+        """
+        Collects all fields from the class and all its parents.
+        CAUTION: Inheritors might override the _fields (type, default value and description)
+        :return:
+        """
         d = dict()
-        d.update(cls._fields)
         if cls != Signal:
             d.update(cls.__base__.inspect_fields())
+        d.update(cls._fields)
         return d
 
     @classmethod
@@ -49,7 +64,7 @@ class Signal:
         for field in fields.keys():
             if field not in kwargs:
                 self.contained[field] = fields[field][1]
-            elif type(kwargs[field]) != fields[field][0]:
+            elif type(kwargs[field]) != fields[field][0] or not issubclass(type(kwargs[field]), fields[field][0]):
                 return False
         return True
 
@@ -83,7 +98,22 @@ class Signal:
             ret.update(Signal.__all_signals(ch))
         return ret
 
+    # -----------------------------------------------GETTERS / SETTERS------------------------------------------------
 
+    def get_src(self):
+        return self.contained['src']
+
+    def set_src(self, val):
+        self.contained['src'] = val
+
+    def get_dst(self):
+        return self.contained['dst']
+
+    def set_dst(self, val):
+        self.contained['dst'] = val
+
+    src = property(get_src, set_src)
+    dst = property(get_dst, set_dst)
 
 
 class SigMirror(Signal):
@@ -107,8 +137,6 @@ class SigTerminate(GeneralControlSignal):
         + if all terminate_table[node_id] is 2,
         + if there is SigTerminate.src = SigTerminate.dst = Null['name']
             1. set self['termination']=2
-
-
     """
 
     def __init__(self):
@@ -222,11 +250,23 @@ class Null:
 
     # ----------------------------------------------- RUNNING --------------------------------------------------------
 
-    def shell_exec(self, signal):
-        self.exec(signal)
+    def exec(self, signal):
+        """
+        Global hook to implement specific common behavior.
+        For now it's just calling the abstract class-specific function _exec(signal)
+        """
+        self._exec(signal)
 
     @abstractmethod
-    def exec(self, signal):
+    def _exec(self, signal):
+        """
+        Exec is the main functional part of the Null which is responsible for determining subject's behavior,
+
+        Invoked via the exec() from the outside of the class to
+
+        WARNING:
+            Recurrent calls are not expected by the architecture. Use signal emission self['id']->self['id'] instead
+        """
         pass
 
     # @abstractmethod
