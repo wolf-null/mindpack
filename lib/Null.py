@@ -15,6 +15,7 @@ import abc
 import inspect
 import pickle
 from abc import abstractmethod
+import sys
 
 
 class Signal:
@@ -41,7 +42,6 @@ class Signal:
         """
         Collects all fields from the class and all its parents.
         CAUTION: Inheritors might override the _fields (type, default value and description)
-        :return:
         """
         d = dict()
         if cls != Signal:
@@ -51,6 +51,9 @@ class Signal:
 
     @classmethod
     def check_fields(cls, **kwargs):
+        """
+        Check is **kwargs <dict> has all the required fields (and proper value type) to create selected signal class.
+        """
         fields = cls.inspect_fields()
         for field in fields.keys():
             if field not in kwargs:
@@ -60,6 +63,9 @@ class Signal:
         return True
 
     def set_fields(self, **kwargs):
+        """
+        Set signal's fields to ** kwargs
+        """
         fields = self.inspect_fields()
         for field in fields.keys():
             if field not in kwargs:
@@ -68,8 +74,12 @@ class Signal:
                 return False
         return True
 
+    def _set_fields_direct(self, **kwargs):
+        # Don't use it if you don't know what are you doing
+        self.contained = kwargs
+
     def __init__(self, **kwargs):
-        self.contained = dict()
+        self.contained = dict()  # List of fields and it's actual values
         try:
             if not self.set_fields(**kwargs):
                 raise Signal.FieldsMismatchError
@@ -80,6 +90,10 @@ class Signal:
 
     @staticmethod
     def find_ch(cl=None):
+        """
+        Return set of all childrens (subclasses) of class cl.
+        If cl is None lists all the signals.
+        """
         if cl is None:
             cl = Signal
         children = cl.__subclasses__()
@@ -97,6 +111,31 @@ class Signal:
         for ch in children:
             ret.update(Signal.__all_signals(ch))
         return ret
+
+    # -------------------------------------------------SERIALIZATION--------------------------------------------------
+
+    class DeserializationErr(Exception):
+        def __init__(self, msg="not specified"):
+            self.message = msg
+            super().__init__(self.message)
+
+    def serialize(self):
+        return "[{0}, {1}]".format(type(self).__class__.__name__, repr(self.contained))
+
+    def __repr__(self):
+        return self.serialize()
+
+    @staticmethod
+    def deserialize(ex: str):
+        structure = dict(eval(ex))
+        try:
+            cl = getattr(sys.modules[__name__], structure[0])
+        except Exception:
+            raise Signal.DeserializationErr('Probably, class {0} was not found in {1} as a module'.format(structure[0], __name__))
+        if not issubclass(cl, Signal):
+            raise Signal.DeserializationErr('Not a subclass of Signal')
+        cl._set_fields_direct(structure[1])  # Assumed to be invoked frequently, so no time for checks, just SET :(
+        return cl
 
     # -----------------------------------------------GETTERS / SETTERS------------------------------------------------
 
@@ -163,11 +202,11 @@ class SigTerminateNow(GeneralControlSignal):
 class Null:
 
     def __init__(self, **kwargs):
-        self._input_signals = list() # type: List[Signal]
+        self._input_signals = list()  # type: List[Signal]
 
         self._state = dict()
 
-        self._domain = None  # type: Null
+        self._domain = None  # type: Null  # _domain is an instance of Null, but by default there is no domain
         if 'domain' in kwargs:
             self._domain = kwargs['domain']
             if isinstance(self._domain, Null):
@@ -225,7 +264,9 @@ class Null:
 
     def set(self, key=None, value=None):
         self._state[key] = value
-        if self['is_mirroring']:
+        if self['is_mirroring'] and self._domain is not None:
+            # If set() is invoked from the inside (e.g. exec()) then mirror.
+            # If set() is invoked from the outside, mirroring doesn't do anything
             cur = inspect.currentframe()
             inv = inspect.getouterframes(cur, 2)
             inv_self = inv[1].frame.f_locals['self']
