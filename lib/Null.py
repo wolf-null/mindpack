@@ -277,13 +277,15 @@ class Null:
     # --------------------------------------------- SIGNAL MGMT ------------------------------------------------------
 
     def push_signal(self, signal):
+        """Push signal is invoked from the outside to add an input signal to Null's buffer"""
         if isinstance(signal, SigTerminateNow):
-            # SigTerminateNow pushes the signal in the front of the stack
+            # SigTerminateNow is prioritized, so it is pushed in the front of the input stack
             self._input_signals.insert(0, signal)
         else:
             self._input_signals.append(signal)
 
     def emit(self, signal):
+        """Emit is invoked from the inside of the object to send signals outside"""
         if isinstance(self._domain, Null):
             self._domain.emit(signal)
         else:
@@ -452,4 +454,4 @@ class B(A):
     awoo={'c':'d'}
 
 
-print(A().t())
+print(B().t())
